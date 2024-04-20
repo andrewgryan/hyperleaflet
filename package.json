@@ -1,6 +1,6 @@
 {
-  "name": "hyperleaflet",
-  "version": "0.4.4",
+  "name": "@andrewgryan/hyperleaflet",
+  "version": "0.1.0",
   "description": "Leaflet for HTML",
   "author": "cemrehancavdar",
   "license": "MIT",

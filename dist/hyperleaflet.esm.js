@@ -1,4 +1,4 @@
-import { tileLayer, control, TileLayer, map, marker, GeoJSON, polyline, polygon } from 'leaflet';
+import { tileLayer, control, TileLayer, map, GeoJSON, marker, icon, polyline, polygon } from 'leaflet';
 
 var tileLayers = {
   OpenStreetMap: tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -53,6 +53,14 @@ function setMapEvents(map) {
   });
   map.on('move', function () {
     var event = createGenericMapEvent(map, 'map:move');
+    window.dispatchEvent(event);
+  });
+  map.on('moveend', function () {
+    var event = createGenericMapEvent(map, 'map:moveend');
+    window.dispatchEvent(event);
+  });
+  map.on('movestart', function () {
+    var event = createGenericMapEvent(map, 'map:movestart');
     window.dispatchEvent(event);
   });
   return map;
@@ -220,6 +228,18 @@ function _extends() {
   };
   return _extends.apply(this, arguments);
 }
+function _objectWithoutPropertiesLoose(source, excluded) {
+  if (source == null) return {};
+  var target = {};
+  var sourceKeys = Object.keys(source);
+  var key, i;
+  for (i = 0; i < sourceKeys.length; i++) {
+    key = sourceKeys[i];
+    if (excluded.indexOf(key) >= 0) continue;
+    target[key] = source[key];
+  }
+  return target;
+}
 
 function setPointEvents(leafletObject, id) {
   leafletObject.on('click', function (e) {
@@ -251,7 +271,14 @@ var createPointGeometry = function createPointGeometry(parsedGeometry, options) 
     reverseOrder = options.reverseOrder;
   var isLonLat = reverseOrderAll || reverseOrder !== undefined;
   var geometry = isLonLat ? [].concat(parsedGeometry).reverse() : parsedGeometry;
-  var leafletGeometry = marker(geometry);
+  var leafletGeometry;
+  if (options.icon) {
+    leafletGeometry = marker(geometry, {
+      icon: icon(JSON.parse(options.icon))
+    });
+  } else {
+    leafletGeometry = marker(geometry);
+  }
   if (options.popup) {
     leafletGeometry.bindPopup(options.popup);
   }
@@ -261,12 +288,45 @@ var createPointGeometry = function createPointGeometry(parsedGeometry, options) 
   setPointEvents(leafletGeometry, options.id);
   return leafletGeometry;
 };
+function changePointGeometry(leafletObject, parsedGeometry, options) {
+  var reverseOrderAll = options.reverseOrderAll,
+    reverseOrder = options.reverseOrder;
+  var isLonLat = reverseOrderAll || reverseOrder !== undefined;
+  var geometry = isLonLat ? [].concat(parsedGeometry).reverse() : parsedGeometry;
+  leafletObject.setLatLng(geometry);
+  return leafletObject;
+}
 var createLineGeometry = function createLineGeometry(parsedGeometry, options) {
+  var reverseOrderAll = options.reverseOrderAll,
+    reverseOrder = options.reverseOrder,
+    polylineOptions = options.options;
+  var isLonLat = reverseOrderAll || reverseOrder !== undefined;
+  var geometry = isLonLat ? GeoJSON.coordsToLatLngs(parsedGeometry, 0) : parsedGeometry;
+  var leafletGeometry = polyline(geometry, polylineOptions);
+  if (options.popup) {
+    leafletGeometry.bindPopup(options.popup);
+  }
+  if (options.tooltip) {
+    leafletGeometry.bindTooltip(options.tooltip);
+  }
+  setPolyGeometryEvents(leafletGeometry, options.id);
+  return leafletGeometry;
+};
+function changeLineGeometry(leafletObject, parsedGeometry, options) {
   var reverseOrderAll = options.reverseOrderAll,
     reverseOrder = options.reverseOrder;
   var isLonLat = reverseOrderAll || reverseOrder !== undefined;
   var geometry = isLonLat ? GeoJSON.coordsToLatLngs(parsedGeometry, 0) : parsedGeometry;
-  var leafletGeometry = polyline(geometry);
+  leafletObject.setLatLngs(geometry);
+  return leafletObject;
+}
+var createPolygonGeometry = function createPolygonGeometry(parsedGeometry, options) {
+  var reverseOrderAll = options.reverseOrderAll,
+    reverseOrder = options.reverseOrder,
+    polylineOptions = options.options;
+  var isLonLat = reverseOrderAll || reverseOrder !== undefined;
+  var geometry = isLonLat ? GeoJSON.coordsToLatLngs(parsedGeometry, 1) : parsedGeometry;
+  var leafletGeometry = polygon(geometry, polylineOptions);
   if (options.popup) {
     leafletGeometry.bindPopup(options.popup);
   }
@@ -276,21 +336,14 @@ var createLineGeometry = function createLineGeometry(parsedGeometry, options) {
   setPolyGeometryEvents(leafletGeometry, options.id);
   return leafletGeometry;
 };
-var createPolygonGeometry = function createPolygonGeometry(parsedGeometry, options) {
+function changePolygonGeometry(leafletObject, parsedGeometry, options) {
   var reverseOrderAll = options.reverseOrderAll,
     reverseOrder = options.reverseOrder;
   var isLonLat = reverseOrderAll || reverseOrder !== undefined;
   var geometry = isLonLat ? GeoJSON.coordsToLatLngs(parsedGeometry, 1) : parsedGeometry;
-  var leafletGeometry = polygon(geometry);
-  if (options.popup) {
-    leafletGeometry.bindPopup(options.popup);
-  }
-  if (options.tooltip) {
-    leafletGeometry.bindTooltip(options.tooltip);
-  }
-  setPolyGeometryEvents(leafletGeometry, options.id);
-  return leafletGeometry;
-};
+  leafletObject.setLatLngs(geometry);
+  return leafletObject;
+}
 var createGeometry = function createGeometry(geometryType) {
   return function (parsedGeometry, options) {
     switch (geometryType) {
@@ -307,14 +360,51 @@ var createGeometry = function createGeometry(geometryType) {
     }
   };
 };
-function createLeafletObject(row) {
-  var geometry = row.geometry,
-    popup = row.popup,
-    tooltip = row.tooltip,
-    geometryType = row.geometryType,
-    id = row.id,
-    reverseOrder = row.reverseOrder;
+function changeGeometry(leafletObject, change) {
+  var geometryType = change.dataset.geometryType;
+  var parsedGeometry = JSON.parse(change.to);
+  var reverseOrderAll = hyperleafletConfig.reverseOrderAll;
+  switch (geometryType) {
+    case 'Point':
+      return changePointGeometry(leafletObject, parsedGeometry, _extends({}, change.dataset, {
+        reverseOrderAll: reverseOrderAll
+      }));
+    case 'LineString':
+      return changeLineGeometry(leafletObject, parsedGeometry, _extends({}, change.dataset, {
+        reverseOrderAll: reverseOrderAll
+      }));
+    case 'Polygon':
+      return changePolygonGeometry(leafletObject, parsedGeometry, _extends({}, change.dataset, {
+        reverseOrderAll: reverseOrderAll
+      }));
+    default:
+      // eslint-disable-next-line no-console
+      console.warn(geometryType + " is not supported");
+      return null;
+  }
+}
+function changeOptions(leafletObject, change) {
+  var options = change.to;
+  return leafletObject.setStyle(JSON.parse(options));
+}
+function createLeafletObject(dataset) {
+  // Image overlay
+  if ('l' in dataset) {
+    return createL(dataset);
+  }
+
+  // Geometry based L objects
+  var geometry = dataset.geometry,
+    popup = dataset.popup,
+    tooltip = dataset.tooltip,
+    geometryType = dataset.geometryType,
+    id = dataset.id,
+    reverseOrder = dataset.reverseOrder,
+    _dataset$options = dataset.options,
+    options = _dataset$options === void 0 ? '{}' : _dataset$options,
+    icon = dataset.icon;
   var parsedGeometry = JSON.parse(geometry);
+  var parsedOptions = JSON.parse(options);
   var reverseOrderAll = hyperleafletConfig.reverseOrderAll;
   var createGeometryFn = createGeometry(geometryType);
   return createGeometryFn(parsedGeometry, {
@@ -322,10 +412,65 @@ function createLeafletObject(row) {
     tooltip: tooltip,
     id: id,
     reverseOrderAll: reverseOrderAll,
-    reverseOrder: reverseOrder
+    reverseOrder: reverseOrder,
+    options: parsedOptions,
+    icon: icon
   });
 }
 
+/**
+ * Create a L.* leaflet object from HTML data-* attributes
+ */
+function createL(dataset) {
+  if (dataset.l.toLowerCase() === 'imageoverlay') {
+    [['imageUrl', 'data-image-url'], ['imageBounds', 'data-image-bounds']].forEach(function (_ref) {
+      var attr = _ref[0],
+        htmlAttr = _ref[1];
+      if (typeof dataset[attr] === 'undefined') {
+        throw new Error("Required attribute " + htmlAttr + " for image overlay not specified in dataset.");
+      }
+    });
+    return L.imageOverlay(dataset.imageUrl, JSON.parse(dataset.imageBounds));
+  } else {
+    throw new Error("data-l " + dataset.l + " not supported");
+  }
+}
+
+/**
+ * Create a L.* leaflet object attributes
+ */
+function changeL(leafletObject, change) {
+  switch (change.attribute.toLowerCase()) {
+    case 'data-image-bounds':
+      return leafletObject.setBounds(JSON.parse(change.to));
+    case 'data-image-url':
+      return leafletObject.setUrl(change.to);
+    default:
+      throw new Error("change to " + change.attribute + " not supported");
+  }
+}
+function changeLeafletObject(leafletObject, change) {
+  switch (change.attribute.toLowerCase()) {
+    case 'data-geometry':
+      {
+        return changeGeometry(leafletObject, change);
+      }
+    case 'data-options':
+      {
+        return changeOptions(leafletObject, change);
+      }
+    case 'data-l':
+    case 'data-image-url':
+    case 'data-image-bounds':
+      return changeL(leafletObject, change);
+    default:
+      {
+        throw new Error("Unsupported attribute " + change.attribute + " in dataset for changing Leaflet object.");
+      }
+  }
+}
+
+var _excluded = ["dataset"];
 function addNodeToHyperleaflet(node, map) {
   var dataset = node.dataset;
   var rowId = dataset.id;
@@ -352,6 +497,15 @@ function deleteNodeFromHyperleaflet(node, map) {
   });
   leafletObject == null ? void 0 : leafletObject.remove();
 }
+function changeNodeInHyperleaflet(change, map) {
+  var rowId = change['data-id'];
+  // eslint-disable-next-line no-underscore-dangle
+  var leafletLayers = Object.values(map._layers);
+  var leafletObject = leafletLayers.find(function (layer) {
+    return layer.hlID === rowId;
+  });
+  changeLeafletObject(leafletObject, change);
+}
 function hyperleafletGeometryHandler(map, _ref) {
   var _ref$addCallback = _ref.addCallback,
     addCallback = _ref$addCallback === void 0 ? function () {} : _ref$addCallback,
@@ -363,67 +517,205 @@ function hyperleafletGeometryHandler(map, _ref) {
       addCallback(node);
     });
   };
-  function removeNodeListToHyperleaflet(nodes) {
+  function removeNodeListFromHyperleaflet(nodes) {
     nodes.forEach(function (node) {
       deleteNodeFromHyperleaflet(node, map);
       removeCallback(node);
     });
   }
+  function changeNodesInHyperleaflet(changes) {
+    // changes is an array of changes and a dataset
+    changes.forEach(function (change) {
+      // NOTE: Some changes have shape { node, changes }, but these seem to be related to add/remove
+      //       lifecycle events.
+      var dataset = change.dataset,
+        partialChanges = _objectWithoutPropertiesLoose(change, _excluded);
+      if (typeof dataset !== 'undefined') {
+        // Handle { dataset, { i: change } } format
+        Object.values(partialChanges).forEach(function (partialChange) {
+          changeNodeInHyperleaflet(_extends({}, partialChange, {
+            dataset: dataset
+          }), map);
+        });
+      }
+    });
+  }
   return {
     addNoteListToHyperleaflet: addNoteListToHyperleaflet,
-    removeNodeListToHyperleaflet: removeNodeListToHyperleaflet
-  };
-}
-function diffNodesWithMap(mutations, map) {
-  var _removeList$filter, _addList$filter;
-  // eslint-disable-next-line no-underscore-dangle
-  var leafletLayers = Object.values(map._layers);
-  var addList = [];
-  var removeList = [];
-  function getAddedNodes(nodes) {
-    nodes.forEach(function (node) {
-      if (node.nodeType === 1 && node.matches('[data-id]')) {
-        addList.push(node);
-      }
-      if (node.childNodes.length > 0) {
-        getAddedNodes(node.childNodes);
-      }
-    });
-  }
-  function getRemovedNodes(nodes) {
-    nodes.forEach(function (node) {
-      if (node.nodeType === 1 && node.matches('[data-id]')) {
-        removeList.push(node);
-      }
-      if (node.childNodes.length > 0) {
-        getRemovedNodes(node.childNodes);
-      }
-    });
-  }
-  mutations.forEach(function (mutation) {
-    if (mutation.type === 'childList') {
-      getAddedNodes(mutation.addedNodes);
-      getRemovedNodes(mutation.removedNodes);
-    }
-  });
-  var filteredRemoveList = (_removeList$filter = removeList.filter(function (node) {
-    return !addList.some(function (addNode) {
-      return addNode.dataset.id === node.dataset.id;
-    });
-  })) != null ? _removeList$filter : [];
-  var filteredAddList = (_addList$filter = addList.filter(function (node) {
-    return !leafletLayers.some(function (leafletNode) {
-      return leafletNode.hlID === node.dataset.id;
-    });
-  })) != null ? _addList$filter : [];
-  return {
-    addedNodes: filteredAddList,
-    removedNodes: filteredRemoveList
+    removeNodeListFromHyperleaflet: removeNodeListFromHyperleaflet,
+    changeNodesInHyperleaflet: changeNodesInHyperleaflet
   };
 }
 
+/* eslint-disable object-shorthand */
+var hyperChangeDetection = {
+  events: {},
+  /**
+   * @param {string} targetSelector
+   * @param {string} uniqueAttribute
+   * @param {string[]} attributeFilter
+   */
+  observe: function observe(_ref) {
+    var targetSelector = _ref.targetSelector,
+      uniqueAttribute = _ref.uniqueAttribute,
+      attributeFilter = _ref.attributeFilter;
+    if (this.events[targetSelector]) {
+      throw new Error("Can't observer twice");
+    }
+    observeChangesInTarget(targetSelector, uniqueAttribute, attributeFilter);
+    this.events[targetSelector] = {};
+  },
+  /**
+   * @param {string} targetSelector
+   * @param {'node_adds' | 'node_removes', 'node_changes'} evName
+   * @param {(nodes: Node[] | *)=>void} secondFunction
+   */
+  subscribe: function subscribe(targetSelector, evName, secondFunction) {
+    this.events[targetSelector][evName] = this.events[targetSelector][evName] || [];
+    this.events[targetSelector][evName].push(secondFunction);
+  },
+  /**
+   * @param {string} targetSelector
+   * @param {'node_adds' | 'node_removes', 'node_changes'} evName
+   * @param {*} fn
+   * */
+  unsubscribe: function unsubscribe(targetSelector, evName, fn) {
+    if (this.events[targetSelector][evName]) {
+      this.events[targetSelector][evName] = this.events[targetSelector][evName].filter(function (f) {
+        return f !== fn;
+      });
+    }
+  },
+  /**
+   * @param {string} targetSelector
+   * @param {'node_adds' | 'node_removes', 'node_changes'} evName
+   * @param {*} data
+   */
+  publish: function publish(targetSelector, evName, data) {
+    if (this.events[targetSelector][evName]) {
+      this.events[targetSelector][evName].forEach(function (f) {
+        f(data);
+      });
+    }
+  }
+};
+window.pubsub = hyperChangeDetection;
+
+/**
+ * @param {string} targetSelector
+ * @param {string} uniqueAttribute
+ * @param {string[]} attributeFilter
+ */
+function observeChangesInTarget(targetSelector, uniqueAttribute, attributeFilter) {
+  var observer = new MutationObserver(function (mutationsList) {
+    var _removedNodes$filter, _addedNodes$filter;
+    var t0 = performance.now();
+    var removedNodes = [];
+    var addedNodes = [];
+    // Iterate through the mutations
+    mutationsList.forEach(function (mutation) {
+      if (mutation.type === 'childList') {
+        // Child nodes added or removed
+        removedNodes.push.apply(removedNodes, findNodesWithAttribute(mutation.removedNodes));
+        addedNodes.push.apply(addedNodes, findNodesWithAttribute(mutation.addedNodes));
+      } else if (mutation.type === 'attributes') {
+        var _attributeChange;
+        var attribute = mutation.attributeName;
+        var attributeChange = (_attributeChange = {
+          attribute: attribute,
+          from: mutation.oldValue,
+          to: mutation.target.getAttribute(attribute)
+        }, _attributeChange[uniqueAttribute] = mutation.target.getAttribute(uniqueAttribute), _attributeChange);
+        var changedNode = [{
+          node: mutation.target,
+          changes: attributeChange
+        }];
+        if (changedNode.length) {
+          hyperChangeDetection.publish(targetSelector, 'node_changes', changedNode);
+        }
+      }
+    });
+    var changedNodes = [];
+    var removedNodeMap = new Map(removedNodes.map(function (node) {
+      return [node.getAttribute(uniqueAttribute), node];
+    }));
+    var jointNodeSet = new Set();
+    addedNodes.forEach(function (addNode) {
+      var addNodeId = addNode.getAttribute(uniqueAttribute);
+      var oldNode = removedNodeMap.get(addNodeId);
+      if (oldNode) {
+        jointNodeSet.add(addNodeId);
+      }
+      if (oldNode && !isEqualNode(oldNode, addNode, attributeFilter)) {
+        var attributeChanges = attributeFilter.reduce(function (changes, attribute) {
+          var from = oldNode.getAttribute(attribute);
+          var to = addNode.getAttribute(attribute);
+          if (from !== to) {
+            var _changes$push;
+            changes.push((_changes$push = {
+              attribute: attribute,
+              from: from,
+              to: to
+            }, _changes$push[uniqueAttribute] = addNodeId, _changes$push));
+          }
+          return changes;
+        }, []);
+        changedNodes.push(_extends({}, attributeChanges, {
+          dataset: addNode.dataset
+        }));
+      }
+    });
+    var reallyRemovedNodes = (_removedNodes$filter = removedNodes.filter(function (node) {
+      return !jointNodeSet.has(node.getAttribute(uniqueAttribute));
+    })) != null ? _removedNodes$filter : [];
+    var reallyAddedNodes = (_addedNodes$filter = addedNodes.filter(function (node) {
+      return !jointNodeSet.has(node.getAttribute(uniqueAttribute));
+    })) != null ? _addedNodes$filter : [];
+    if (reallyAddedNodes.length) {
+      hyperChangeDetection.publish(targetSelector, 'node_adds', reallyAddedNodes);
+    }
+    if (changedNodes.length) {
+      hyperChangeDetection.publish(targetSelector, 'node_changes', changedNodes);
+    }
+    if (reallyRemovedNodes.length) {
+      hyperChangeDetection.publish(targetSelector, 'node_removes', reallyRemovedNodes);
+    }
+    var t1 = performance.now();
+    console.log(" " + (t1 - t0) + " milliseconds.");
+  });
+  var isEqualNode = function isEqualNode(oldNode, newNode, attributes) {
+    return attributes.every(function (attribute) {
+      return oldNode.getAttribute(attribute) === newNode.getAttribute(attribute);
+    });
+  };
+  function findNodesWithAttribute(nodes) {
+    var result = [];
+    nodes.forEach(function (node) {
+      if (node.nodeType === 1) {
+        if (node.hasAttribute(uniqueAttribute)) {
+          result.push(node);
+        }
+        result.push.apply(result, findNodesWithAttribute(node == null ? void 0 : node.childNodes));
+      }
+    });
+    return result;
+  }
+
+  // Configuration options for the observer
+  var config = {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: attributeFilter,
+    attributeOldValue: true
+  };
+  var targetNode = document.querySelector(targetSelector);
+  observer.observe(targetNode, config);
+}
+
+var HYPERLEAFLET_DATA_SOURCE = '[data-hyperleaflet-source]';
 function hyperleafletDataToMap(map) {
-  var hyperleafletDataSource = document.querySelector('[data-hyperleaflet-source]');
+  var hyperleafletDataSource = document.querySelector(HYPERLEAFLET_DATA_SOURCE);
   if (!hyperleafletDataSource) return;
   var geometryDisplay = hyperleafletDataSource.dataset.geometryDisplay || 'none';
   var callbackFunctions = {};
@@ -443,25 +735,25 @@ function hyperleafletDataToMap(map) {
   }
   var _hyperleafletGeometry = hyperleafletGeometryHandler(map, callbackFunctions),
     addNoteListToHyperleaflet = _hyperleafletGeometry.addNoteListToHyperleaflet,
-    removeNodeListToHyperleaflet = _hyperleafletGeometry.removeNodeListToHyperleaflet;
+    removeNodeListFromHyperleaflet = _hyperleafletGeometry.removeNodeListFromHyperleaflet,
+    changeNodesInHyperleaflet = _hyperleafletGeometry.changeNodesInHyperleaflet;
   map.whenReady(function () {
     var nodes = hyperleafletDataSource.querySelectorAll('[data-id]');
     addNoteListToHyperleaflet(nodes);
   });
-  function callback(mutations) {
-    var _diffNodesWithMap = diffNodesWithMap(mutations, map),
-      addedNodes = _diffNodesWithMap.addedNodes,
-      removedNodes = _diffNodesWithMap.removedNodes;
-    addNoteListToHyperleaflet(addedNodes);
-    removeNodeListToHyperleaflet(removedNodes);
-  }
-  var observer = new MutationObserver(callback);
-  observer.observe(hyperleafletDataSource, {
-    childList: true,
-    // observe direct children
-    subtree: true,
-    // and lower descendants too
-    attributeFilter: ['data-id']
+  hyperChangeDetection.observe({
+    targetSelector: HYPERLEAFLET_DATA_SOURCE,
+    uniqueAttribute: 'data-id',
+    attributeFilter: ['data-geometry', 'data-options', 'data-l', 'data-image-url', 'data-image-bounds']
+  });
+  hyperChangeDetection.subscribe(HYPERLEAFLET_DATA_SOURCE, 'node_adds', function (data) {
+    addNoteListToHyperleaflet(data);
+  });
+  hyperChangeDetection.subscribe(HYPERLEAFLET_DATA_SOURCE, 'node_removes', function (data) {
+    removeNodeListFromHyperleaflet(data);
+  });
+  hyperChangeDetection.subscribe(HYPERLEAFLET_DATA_SOURCE, 'node_changes', function (data) {
+    changeNodesInHyperleaflet(data);
   });
 }
 
