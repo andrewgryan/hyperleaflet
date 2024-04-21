@@ -1,8 +1,9 @@
-// // @vitest-environment happy-dom
+// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest';
 import L from 'leaflet';
 import { changeLeafletObject, createLeafletObject } from '../leaflet-geometry';
 import hyperleafletConfig from '../../config';
+import hyperleafletGeometryHandler from '../hyperleaflet-geometry-handler';
 
 describe('createLeafletObject', () => {
   beforeEach(() => {
@@ -175,6 +176,8 @@ describe('createLeafletObject', () => {
     });
     expect(polyline).toBeInstanceOf(L.Polyline);
     expect(polyline.options).toEqual({ weight: 2 });
+  });
+
   it('should create a Leaflet imageOverlay given imageUrl', () => {
     const dataset = {
       l: 'imageOverlay',
@@ -231,5 +234,34 @@ describe('createLeafletObject', () => {
     };
     overlay = changeLeafletObject(overlay, change);
     expect(overlay).toBeInstanceOf(L.ImageOverlay);
+  });
+});
+
+describe('hyperleafletGeometryHandler', () => {
+  it('should add layers to map', () => {
+    // Arrange
+    const el = document.createElement('div');
+    const map = L.map(el);
+    const { addNoteListToHyperleaflet } = hyperleafletGeometryHandler(map, {
+      addCallback: () => {},
+    });
+    const node = document.createElement('div');
+    node.dataset.l = 'imageOverlay';
+    node.dataset.imageUrl = 'url';
+    node.dataset.imageBounds = '[[0,0],[2,2]]';
+    node.dataset.opacity = '0.7';
+
+    // Act
+    addNoteListToHyperleaflet([node]);
+
+    // Assert
+    const layers = Object.values(map._layers);
+    expect(layers.length).toBe(1);
+    expect(layers[0].getBounds()).toEqual(
+      L.latLngBounds([
+        [0, 0],
+        [2, 2],
+      ]),
+    );
   });
 });
