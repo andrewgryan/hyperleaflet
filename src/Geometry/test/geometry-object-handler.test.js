@@ -1,4 +1,4 @@
-// // @vitest-environment happy-dom
+// @vitest-environment happy-dom
 import { describe, expect, it, beforeEach } from 'vitest';
 import geometryObjectHandler from '../geometry-object-handler';
 
