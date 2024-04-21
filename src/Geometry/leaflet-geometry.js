@@ -160,14 +160,20 @@ function createL(dataset) {
         throw new Error(`Required attribute ${htmlAttr} for image overlay not specified in dataset.`);
       }
     });
-    return L.imageOverlay(dataset.imageUrl, JSON.parse(dataset.imageBounds));
+    let options = undefined;
+    if (typeof dataset.imageOpacity !== 'undefined') {
+      options = {
+        opacity: Number(dataset.imageOpacity),
+      };
+    }
+    return L.imageOverlay(dataset.imageUrl, JSON.parse(dataset.imageBounds), options);
   } else {
     throw new Error(`data-l ${dataset.l} not supported`);
   }
 }
 
 /**
- * Create a L.* leaflet object attributes
+ * Change L.* leaflet object attributes
  */
 function changeL(leafletObject, change) {
   switch (change.attribute.toLowerCase()) {
@@ -175,6 +181,8 @@ function changeL(leafletObject, change) {
       return leafletObject.setBounds(JSON.parse(change.to));
     case 'data-image-url':
       return leafletObject.setUrl(change.to);
+    case 'data-image-opacity':
+      return leafletObject.setOpacity(Number(change.to));
     default:
       throw new Error(`change to ${change.attribute} not supported`);
   }
@@ -191,6 +199,7 @@ export function changeLeafletObject(leafletObject, change) {
     case 'data-l':
     case 'data-image-url':
     case 'data-image-bounds':
+    case 'data-image-opacity':
       return changeL(leafletObject, change);
     default: {
       throw new Error(`Unsupported attribute ${change.attribute} in dataset for changing Leaflet object.`);
